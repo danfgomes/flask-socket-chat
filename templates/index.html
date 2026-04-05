@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chat em Tempo Real</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/chat.css') }}">
+</head>
+<body>
+    <div class="chat-app">
+        <header class="chat-header">
+            <h1 class="chat-title">Chat em Tempo Real</h1>
+            <div id="status" class="chat-status" aria-live="polite">
+                <span class="chat-status-dot" aria-hidden="true"></span>
+                <span id="status-text">Online</span>
+            </div>
+        </header>
+
+        <main class="chat-main">
+            <ul id="messages" class="messages" aria-live="polite" aria-label="Mensagens da conversa"></ul>
+        </main>
+
+        <footer class="chat-footer">
+            <form id="form" class="chat-form" autocomplete="off">
+                <input
+                    id="input"
+                    class="chat-input"
+                    type="text"
+                    name="message"
+                    placeholder="Digite sua mensagem..."
+                    aria-label="Digite sua mensagem"
+                >
+                <button class="chat-send" type="submit" aria-label="Enviar mensagem">
+                    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                        <path d="M20.77 3.23L3.88 10.02C3.08 10.34 3.11 11.49 3.93 11.77L10.88 14.14L13.25 21.09C13.53 21.91 14.68 21.94 15 21.14L21.79 4.25C22.07 3.54 21.48 2.95 20.77 3.23Z" fill="currentColor"/>
+                    </svg>
+                </button>
+            </form>
+        </footer>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/3.0.4/socket.io.js"></script>
+    <script>
+        const socket = io();
+        const clientId = window.crypto && window.crypto.randomUUID
+            ? window.crypto.randomUUID()
+            : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+
+        const seedMessages = [
+            { text: 'Olá! Como você está?', time: '02:22', senderId: 'support' },
+            { text: 'Oi! Estou bem, obrigado! E você?', time: '02:23', senderId: 'me' },
+            { text: 'Estou ótimo! Vamos conversar sobre o projeto?', time: '02:23', senderId: 'support' },
+            { text: 'Claro! Podemos começar revisando os requisitos.', time: '02:24', senderId: 'me' },
+            { text: 'Perfeito! Já preparei os documentos.', time: '02:24', senderId: 'support' },
+            { text: 'Ótimo trabalho! Vou dar uma olhada agora.', time: '02:25', senderId: 'me' },
+            { text: 'Me avisa se precisar de mais alguma informação!', time: '02:25', senderId: 'support' },
+            { text: 'Com certeza! Obrigado pela ajuda.', time: '02:26', senderId: 'me' },
+            { text: 'Disponha! Estou aqui para o que precisar 😊', time: '02:26', senderId: 'support' }
+        ];
+
+        const messagesList = document.getElementById('messages');
+        const form = document.getElementById('form');
+        const input = document.getElementById('input');
+        const status = document.getElementById('status');
+        const statusText = document.getElementById('status-text');
+
+        function getCurrentTime() {
+            return new Date().toLocaleTimeString('pt-BR', {
+                hour: '2-digit',
+                minute: '2-digit'
+            });
+        }
+
+        function normalizeMessage(message) {
+            if (typeof message === 'string') {
+                return {
+                    text: message,
+                    time: getCurrentTime(),
+                    senderId: 'support'
+                };
+            }
+
+            return {
+                text: String(message.text || ''),
+                time: message.time || getCurrentTime(),
+                senderId: message.senderId || 'support'
+            };
+        }
+
+        function renderMessage(message, options = {}) {
+            const row = document.createElement('li');
+            const bubble = document.createElement('article');
+            const text = document.createElement('p');
+            const time = document.createElement('span');
+            const isOutgoing = message.senderId === clientId || message.senderId === 'me';
+
+            row.className = `message-row ${isOutgoing ? 'message-row--outgoing' : 'message-row--incoming'}`;
+            bubble.className = 'message-bubble';
+            text.className = 'message-text';
+            time.className = 'message-time';
+
+            text.textContent = message.text;
+            time.textContent = message.time;
+
+            bubble.appendChild(text);
+            bubble.appendChild(time);
+            row.appendChild(bubble);
+            messagesList.appendChild(row);
+
+            if (!options.skipScroll) {
+                messagesList.scrollTop = messagesList.scrollHeight;
+            }
+        }
+
+        function renderInitialMessages() {
+            seedMessages.forEach(function(message, index) {
+                renderMessage(message, {
+                    skipScroll: index !== seedMessages.length - 1
+                });
+            });
+        }
+
+        function updateStatus(label, offline) {
+            statusText.textContent = label;
+            status.classList.toggle('is-offline', Boolean(offline));
+        }
+
+        renderInitialMessages();
+
+        socket.on('connect', function() {
+            updateStatus('Online', false);
+        });
+
+        socket.on('disconnect', function() {
+            updateStatus('Reconectando...', true);
+        });
+
+        socket.on('message', function(rawMessage) {
+            const message = normalizeMessage(rawMessage);
+            renderMessage(message);
+        });
+
+        form.addEventListener('submit', function(event) {
+            event.preventDefault();
+
+            const text = input.value.trim();
+
+            if (!text) {
+                return;
+            }
+
+            socket.emit('message', {
+                text: text,
+                time: getCurrentTime(),
+                senderId: clientId
+            });
+
+            input.value = '';
+            input.focus();
+        });
+    </script>
+</body>
+</html>
